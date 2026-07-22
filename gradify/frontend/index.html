@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gradify — Graphs & Stats for Students</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+<div id="root"></div>
+
+<!-- CONFIG: replace with your own Google OAuth Client ID -->
+<script>
+  window.GRADIFY_CONFIG = {
+    GOOGLE_CLIENT_ID: "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
+    API_BASE: "" // same origin; set to full backend URL if hosted separately
+  };
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback, useRef } = React;
+const API_BASE = window.GRADIFY_CONFIG.API_BASE;
+
+function authHeaders(token) {
+  return token ? { "Authorization": "Bearer " + token, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+}
+
+function LoginScreen({ onLogin }) {
+  const btnRef = useRef(null);
+
+  useEffect(() => {
+    if (!window.google) return;
+    window.google.accounts.id.initialize({
+      client_id: window.GRADIFY_CONFIG.GOOGLE_CLIENT_ID,
+      callback: (resp) => onLogin(resp.credential),
+    });
+    window.google.accounts.id.renderButton(btnRef.current, {
+      theme: "filled_blue", size: "large", shape: "pill", width: 280,
+    });
+  }, []);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="bg-white shadow-xl rounded-2xl p-10 max-w-md w-full text-center border border-slate-100">
+        <div className="text-4xl mb-3">📊</div>
+        <h1 className="text-2xl font-bold text-slate-800 mb-2">Gradify</h1>
+        <p className="text-slate-500 mb-8">Generate graphs, charts & diagrams for your assignments in seconds. 15 free, then just ₹20 for 15 more.</p>
+        <div className="flex justify-center" ref={btnRef}></div>
+        <p className="text-xs text-slate-400 mt-6">Sign in with Google to get started</p>
+      </div>
+    </div>
+  );
+}
+
+const CHART_TYPES = [
+  { id: "bar", label: "Bar Chart" },
+  { id: "line", label: "Line Chart" },
+  { id: "pie", label: "Pie Chart" },
+  { id: "scatter", label: "Scatter Plot" },
+  { id: "histogram", label: "Histogram" },
+  { id: "boxplot", label: "Box Plot" },
+];
+
+function UsageBar({ user }) {
+  const pct = Math.min(100, (user.free_used / user.free_limit) * 100);
+  return (
+    <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm">
+      <div className="flex justify-between text-sm text-slate-600 mb-1">
+        <span>Free generations used</span>
+        <span>{user.free_used}/{user.free_limit}</span>
+      </div>
+      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-full bg-indigo-600 rounded-full transition-all" style={{ width: pct + "%" }}></div>
+      </div>
+      {user.paid_credits > 0 && (
+        <p className="text-xs text-emerald-600 mt-2">+ {user.paid_credits} paid credits available</p>
+      )}
+    </div>
+  );
+}
+
+function PaywallModal({ onClose, onSuccess, token, packInfo }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const startPayment = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(API_BASE + "/api/payment/create-order", {
+        method: "POST", headers: authHeaders(token),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error);
+
+      const rzp = new Razorpay({
+        key: data.key_id,
+        amount: data.amount,
+        currency: data.currency,
+        name: "Gradify",
+        description: `${data.credits} chart generations`,
+        order_id: data.order_id,
+        handler: async function (response) {
+          const verifyRes = await fetch(API_BASE + "/api/payment/verify", {
+            method: "POST", headers: authHeaders(token),
+            body: JSON.stringify(response),
+          });
+          const verifyData = await verifyRes.json();
+          if (verifyRes.ok) {
+            onSuccess(verifyData.user);
+          } else {
+            setError(verifyData.message || "Payment verification failed");
+          }
+        },
+        theme: { color: "#4f46e5" },
+      });
+      rzp.on("payment.failed", () => setError("Payment failed. Please try again."));
+      rzp.open();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+        <h2 className="text-xl font-bold text-slate-800 mb-2">Free limit reached</h2>
+        <p className="text-slate-500 mb-6">You've used all your free generations. Buy {packInfo.credits} more for ₹{packInfo.price}.</p>
+        {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+        <button onClick={startPayment} disabled={loading}
+          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition disabled:opacity-50">
+          {loading ? "Starting..." : `Pay ₹${packInfo.price}`}
+        </button>
+        <button onClick={onClose} className="w-full mt-3 text-slate-500 text-sm py-2">Maybe later</button>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ user, setUser, token, onLogout }) {
+  const [type, setType] = useState("bar");
+  const [title, setTitle] = useState("");
+  const [labels, setLabels] = useState("Jan, Feb, Mar, Apr");
+  const [values, setValues] = useState("12, 19, 8, 15");
+  const [xLabel, setXLabel] = useState("");
+  const [yLabel, setYLabel] = useState("");
+  const [image, setImage] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [showPaywall, setShowPaywall] = useState(false);
+
+  const generate = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(API_BASE + "/api/generate", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          type, title,
+          labels: labels.split(",").map(s => s.trim()).filter(Boolean),
+          values: values.split(",").map(s => s.trim()).filter(Boolean),
+          x_label: xLabel, y_label: yLabel,
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 402) {
+        setShowPaywall(true);
+        return;
+      }
+      if (!res.ok) throw new Error(data.message || data.error || "Generation failed");
+      setImage(data.image);
+      setUser(data.user);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadImage = () => {
+    const a = document.createElement("a");
+    a.href = image;
+    a.download = `${title || "gradify-chart"}.png`;
+    a.click();
+  };
+
+  return (
+    <div className="min-h-screen">
+      <header className="bg-white border-b border-slate-100 px-6 py-4 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">📊</span>
+          <span className="font-bold text-slate-800 text-lg">Gradify</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {user.picture && <img src={user.picture} className="w-8 h-8 rounded-full" />}
+          <span className="text-sm text-slate-600 hidden sm:inline">{user.name}</span>
+          <button onClick={onLogout} className="text-sm text-slate-400 hover:text-slate-700">Sign out</button>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 py-8 grid md:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          <UsageBar user={user} />
+
+          <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-sm space-y-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700">Chart type</label>
+              <select value={type} onChange={e => setType(e.target.value)}
+                className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                {CHART_TYPES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Title</label>
+              <input value={title} onChange={e => setTitle(e.target.value)}
+                placeholder="e.g. Monthly Rainfall in Kerala"
+                className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Labels (comma separated)</label>
+              <input value={labels} onChange={e => setLabels(e.target.value)}
+                className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Values (comma separated)</label>
+              <input value={values} onChange={e => setValues(e.target.value)}
+                className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-slate-700">X-axis label</label>
+                <input value={xLabel} onChange={e => setXLabel(e.target.value)}
+                  className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Y-axis label</label>
+                <input value={yLabel} onChange={e => setYLabel(e.target.value)}
+                  className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            </div>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <button onClick={generate} disabled={loading}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition disabled:opacity-50">
+              {loading ? "Generating..." : "Generate chart"}
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-sm flex flex-col items-center justify-center min-h-[300px]">
+          {image ? (
+            <>
+              <img src={image} className="max-w-full rounded-lg border border-slate-100" />
+              <button onClick={downloadImage}
+                className="mt-4 text-sm bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-lg text-slate-700">
+                Download PNG
+              </button>
+            </>
+          ) : (
+            <p className="text-slate-400 text-sm">Your generated chart will appear here</p>
+          )}
+        </div>
+      </main>
+
+      {showPaywall && (
+        <PaywallModal
+          token={token}
+          packInfo={{ credits: 15, price: 20 }}
+          onClose={() => setShowPaywall(false)}
+          onSuccess={(u) => { setUser(u); setShowPaywall(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [token, setToken] = useState(localStorage.getItem("gradify_token") || null);
+  const [user, setUser] = useState(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    if (!token) { setChecking(false); return; }
+    fetch(API_BASE + "/api/me", { headers: authHeaders(token) })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setUser(d.user))
+      .catch(() => { localStorage.removeItem("gradify_token"); setToken(null); })
+      .finally(() => setChecking(false));
+  }, [token]);
+
+  const handleLogin = async (credential) => {
+    const res = await fetch(API_BASE + "/api/auth/google", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      localStorage.setItem("gradify_token", data.token);
+      setToken(data.token);
+      setUser(data.user);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("gradify_token");
+    setToken(null);
+    setUser(null);
+  };
+
+  if (checking) return <div className="min-h-screen flex items-center justify-center text-slate-400">Loading...</div>;
+  if (!user) return <LoginScreen onLogin={handleLogin} />;
+  return <Dashboard user={user} setUser={setUser} token={token} onLogout={handleLogout} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
