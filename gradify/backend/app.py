@@ -35,7 +35,11 @@ PACK_CREDITS = int(os.environ.get("PACK_CREDITS", 15))       # generations bough
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "..", "frontend"), static_url_path="")
+app = Flask(
+    __name__,
+    static_folder=os.path.join(BASE_DIR, "..", "frontend", "dist"),
+    static_url_path="",
+)
 CORS(app)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
@@ -353,16 +357,30 @@ def verify_payment():
 
 
 # ---------------------------------------------------------------------------
-# Serve frontend
+# Serve frontend (Vite production build in frontend/dist)
 # ---------------------------------------------------------------------------
-@app.route("/")
-def index():
-    return send_from_directory(app.static_folder, "index.html")
-
-
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_frontend(path):
+    # Never let this catch-all swallow API routes that don't exist —
+    # let Flask's normal 404 handling apply instead of returning index.html.
+    if path.startswith("api/"):
+        return jsonify({"error": "not_found"}), 404
+
+    full_path = os.path.join(app.static_folder, path)
+    if path and os.path.isfile(full_path):
+        # Serves JS/CSS/images/etc. from frontend/dist with correct MIME types
+        # (this is what fixes the "application/octet-stream" module script error)
+        return send_from_directory(app.static_folder, path)
+
+    # Any other path (React Router routes, "/", refreshes on deep links, etc.)
+    # falls back to the built index.html so client-side routing can take over.
+    return send_from_directory(app.static_folder, "index.html")
 
 
 if __name__ == "__main__":
