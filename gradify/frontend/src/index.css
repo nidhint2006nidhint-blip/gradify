@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-ink-200 dark:border-ink-800;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-white text-ink-900 font-body antialiased dark:bg-ink-950 dark:text-ink-50;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  h1, h2, h3, h4 {
+    @apply font-display;
+  }
+
+  ::selection {
+    @apply bg-primary-200 text-primary-900;
+  }
+
+  :focus-visible {
+    outline: 2px solid #5b5fef;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/70 dark:bg-ink-900/60 backdrop-blur-xl border border-white/40 dark:border-ink-800/60;
+  }
+
+  .card {
+    @apply bg-white dark:bg-ink-900 border border-ink-100 dark:border-ink-800 rounded-xl2 shadow-soft;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full font-semibold text-sm px-5 py-2.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-500 text-white shadow-glow hover:bg-primary-600 hover:-translate-y-0.5 active:translate-y-0;
+  }
+
+  .btn-accent {
+    @apply btn bg-accent-400 text-ink-900 hover:bg-accent-500 hover:-translate-y-0.5 active:translate-y-0;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-ink-700 hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-ink-800;
+  }
+
+  .btn-outline {
+    @apply btn border border-ink-200 dark:border-ink-700 text-ink-800 dark:text-ink-100 hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-300;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 px-4 py-2.5 text-sm text-ink-900 dark:text-ink-50 placeholder:text-ink-400 outline-none transition focus:border-primary-400 focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/40;
+  }
+
+  .label {
+    @apply block text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400 mb-1.5;
+  }
+
+  .dot-grid-bg {
+    background-image: radial-gradient(circle, currentColor 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-grad-primary;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden bg-ink-100 dark:bg-ink-800 rounded-lg;
+  }
+
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.5),
+      transparent
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+}
